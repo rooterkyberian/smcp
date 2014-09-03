@@ -172,6 +172,8 @@ typedef smcp_callback_func smcp_inbound_resend_func;
 #include "smcp-plat-uip.h"
 #endif
 
+#include "smcp-session.h"
+
 #if SMCP_EMBEDDED
 #define SMCP_LIBRARY_VERSION_CHECK()	do { } while(0)
 #else
@@ -576,3 +578,4 @@ __END_DECLS
 #include "smcp-transaction.h"
 #include "smcp-observable.h"
 #include "smcp-helpers.h"
+#include "smcp-session.h"

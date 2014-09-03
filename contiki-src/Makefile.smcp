@@ -4,7 +4,7 @@ endif
 
 PROJECT_SOURCEFILES += smcp.c smcp-auth.c smcp-inbound.c smcp-outbound.c \
 	smcp-plat-uip.c smcp-observable.c smcp-timer.c smcp-transaction.c \
-	smcp-dupe.c smcp-missing.c
+	smcp-dupe.c smcp-missing.c smcp-session.c
 PROJECT_SOURCEFILES += coap.c
 PROJECT_SOURCEFILES += url-helpers.c
 PROJECT_SOURCEFILES += string-utils.c

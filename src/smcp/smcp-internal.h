@@ -118,6 +118,17 @@ struct smcp_s {
 
 	coap_msg_id_t			last_msg_id;
 
+#if SMCP_CONF_MAX_SESSION_COUNT > 1
+	smcp_session_t          sessions; //! List containing all active sessions.
+	smcp_session_t          current_session;
+#if SMCP_AVOID_MALLOC
+	struct smcp_session_s   session_table[SMCP_CONF_MAX_SESSION_COUNT];
+#endif
+#endif
+
+	//! Default session. Used when all sessions are full. Only supports UDP.
+	struct smcp_session_s   default_session;
+
 	//! Inbound packet variables.
 	struct {
 		const struct coap_header_s*	packet;
@@ -140,7 +151,6 @@ struct smcp_s {
 		int32_t					max_age;
 		uint32_t				observe_value;
 		uint32_t				block2_value;
-
 
 		smcp_sockaddr_t			saddr;
 

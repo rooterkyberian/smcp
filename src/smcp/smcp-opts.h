@@ -234,11 +234,18 @@
 #endif
 
 #ifndef SMCP_DTLS
-#define SMCP_DTLS							(1)
+#define SMCP_DTLS							!SMCP_EMBEDDED
 #endif
 
-#ifndef SMCP_USE_EXPERIMENTAL_DIGEST_AUTH
-#define SMCP_USE_EXPERIMENTAL_DIGEST_AUTH	(1)
+/*****************************************************************************/
+// MARK: - Sessions
+
+#ifndef SMCP_CONF_MAX_SESSION_COUNT
+#if SMCP_DTLS || SMCP_TCP || !SMCP_EMBEDDED
+#define SMCP_CONF_MAX_SESSION_COUNT		10
+#else
+#define SMCP_CONF_MAX_SESSION_COUNT		1
+#endif
 #endif
 
 /*****************************************************************************/
@@ -257,6 +264,11 @@
 */
 #ifndef SMCP_MAX_CASCADE_COUNT
 #define SMCP_MAX_CASCADE_COUNT      (128)
+#endif
+
+// Going away.
+#ifndef SMCP_USE_EXPERIMENTAL_DIGEST_AUTH
+#define SMCP_USE_EXPERIMENTAL_DIGEST_AUTH	(1)
 #endif
 
 /*****************************************************************************/
