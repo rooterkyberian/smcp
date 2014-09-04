@@ -56,7 +56,7 @@
 #define COAP_MULTICAST_IP4_ALLDEVICES	"224.0.1.187" //!< Defined in RFC7252
 
 //! IPv6 Link-Local multicast address for CoAP all-devices.
-#define COAP_MULTICAST_IP6_ML_ALLDEVICES	"FF02::FD"
+#define COAP_MULTICAST_IP6_LL_ALLDEVICES	"FF02::FD"
 
 //! IPv6 Mesh-Local multicast address for CoAP all-devices.
 #define COAP_MULTICAST_IP6_ML_ALLDEVICES	"FF03::FD"

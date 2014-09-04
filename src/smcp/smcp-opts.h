@@ -248,6 +248,11 @@
 #endif
 #endif
 
+#ifndef SMCP_SESSIONS_USE_BTREE
+#define SMCP_SESSIONS_USE_BTREE				1
+//#define SMCP_SESSIONS_USE_BTREE				((SMCP_CONF_MAX_SESSION_COUNT == 1) || !SMCP_EMBEDDED)
+#endif
+
 /*****************************************************************************/
 // MARK: - Experimental Options
 

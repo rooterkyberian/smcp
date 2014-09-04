@@ -35,6 +35,7 @@
 #include "smcp-auth.h"
 
 #if SMCP_AVOID_MALLOC
+// TODO: This should be moved into the SMCP instance.
 static struct smcp_transaction_s smcp_transaction_pool[SMCP_CONF_MAX_TRANSACTIONS];
 #endif // SMCP_AVOID_MALLOC
 

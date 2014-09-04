@@ -57,7 +57,11 @@ typedef struct smcp_session_s* smcp_session_t;
 // This structure may one day be entirely opaque
 struct smcp_session_s {
 #if SMCP_CONF_MAX_SESSION_COUNT > 1
-	struct ll_item_s ll;
+#if SMCP_TRANSACTIONS_USE_BTREE
+	struct bt_item_s			bt_item;
+#else
+	struct ll_item_s			ll_item;
+#endif
 	int refcount;
 	smcp_session_type_t type;
 	smcp_session_state_t state;
