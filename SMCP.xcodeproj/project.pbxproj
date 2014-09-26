@@ -454,9 +454,11 @@
 				A63EA6F51278B16D00B24867 /* smcp.h */,
 				A63EA6F41278B16D00B24867 /* smcp.c */,
 				A63EA6E81278B16D00B24867 /* smcp-internal.h */,
-				A6C04B0718AC178000DCE0CC /* smcp-plat-bsd.c */,
 				A669AAE119B1239700274532 /* smcp-missing.h */,
 				A669AAE219B1249100274532 /* smcp-missing.c */,
+				A60E4FE419B6744100D876DD /* smcp-session.h */,
+				A60E4FE519B6745000D876DD /* smcp-session.c */,
+				A6C04B0718AC178000DCE0CC /* smcp-plat-bsd.c */,
 				A69D2C9E190B0CF1003CE26C /* smcp-plat-bsd.h */,
 				A68E13DD1912E48C008F5A0A /* smcp-plat-bsd-internal.h */,
 				A6C04AFF18AC175700DCE0CC /* smcp-plat-uip.c */,
@@ -477,8 +479,6 @@
 				A63EA6F01278B16D00B24867 /* smcp-timer.c */,
 				A6DB621A16AFBBCB00D7248E /* Extras */,
 				A6DB620716AF7A6800D7248E /* Node Router */,
-				A60E4FE419B6744100D876DD /* smcp-session.h */,
-				A60E4FE519B6745000D876DD /* smcp-session.c */,
 			);
 			name = Source;
 			sourceTree = "<group>";

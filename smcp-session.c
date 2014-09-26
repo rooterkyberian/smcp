@@ -31,11 +31,7 @@
 #include <config.h>
 #endif
 
-#define SMCP_CONF_MAX_SESSION_COUNT		10
-#define SMCP_AVOID_MALLOC	1
-
 //#define ASSERT_MACROS_USE_VANILLA_PRINTF 1
-//#define SMCP_DEBUG_TIMERS	1
 //#define VERBOSE_DEBUG 1
 //#define DEBUG 1
 
@@ -50,6 +46,7 @@
 
 #include <stdio.h>
 
+#if SMCP_CONF_MAX_SESSION_COUNT != 1
 #if SMCP_SESSIONS_USE_BTREE
 static bt_compare_result_t
 smcp_session_compare(
@@ -130,9 +127,8 @@ smcp_session_compare_sockaddr(
 
 	return 0;
 }
-#endif
+#endif // #if SMCP_SESSIONS_USE_BTREE
 
-#if SMCP_CONF_MAX_SESSION_COUNT != 1
 smcp_session_t
 smcp_get_next_free_session(smcp_t self) {
 	smcp_session_t ret;
@@ -154,7 +150,8 @@ smcp_get_next_free_session(smcp_t self) {
 	return ret;
 #endif
 }
-#endif
+
+#endif // #if SMCP_CONF_MAX_SESSION_COUNT != 1
 
 smcp_status_t
 smcp_collect_sessions(smcp_t self)
@@ -162,7 +159,6 @@ smcp_collect_sessions(smcp_t self)
 	// TODO: Writeme!
 	return SMCP_STATUS_NOT_IMPLEMENTED;
 }
-
 
 smcp_session_t
 smcp_lookup_session(
@@ -172,7 +168,21 @@ smcp_lookup_session(
 	const smcp_sockaddr_t* local,
 	int flags
 ) {
-	require(remote != NULL, )
+	if ((type != SMCP_SESSION_TYPE_UDP)
+#if SMCP_DTLS
+		&& (type != SMCP_SESSION_TYPE_DTLS)
+#endif
+#if SMCP_TCP
+		&& (type != SMCP_SESSION_TYPE_TCP)
+#endif
+#if SMCP_TLS
+		&& (type != SMCP_SESSION_TYPE_TLS)
+#endif
+	) {
+		// Unsupported session type.
+		return NULL;
+	}
+
 #if SMCP_CONF_MAX_SESSION_COUNT == 1
 	// Only one session...
 	return type == SMCP_SESSION_TYPE_UDP ? &self->default_session : NULL;
@@ -188,14 +198,20 @@ smcp_lookup_session(
 		ret = smcp_get_next_free_session(self);
 
 		if (ret == NULL) {
-			// TODO: Retire one of the sessions already in progress.
+			// TODO: Retire one of the sessions already in progress?
 			goto bail;
 		}
+
+		memset(ret, 0, sizeof(*ret));
 
 		ret->type = type;
 		if (remote != NULL) {
 			memcpy(&ret->sockaddr_remote, *remote, sizeof(ret->sockaddr_remote));
+		if (local != NULL) {
+			memcpy(&ret->sockaddr_local, *remote, sizeof(ret->sockaddr_local));
 		}
+		
+		bt_insert(&self->sessions, ret, &smcp_session_compare_sockaddr, NULL, NULL);
 	}
 
 	if (ret != NULL) {
@@ -211,19 +227,31 @@ bail:
 smcp_session_type_t
 smcp_session_get_type(smcp_session_t session)
 {
+#if SMCP_CONF_MAX_SESSION_COUNT != 1
 	return session->type;
+#else
+	return SMCP_SESSION_TYPE_UDP;
+#endif
 }
 
 smcp_session_state_t
 smcp_session_get_state(smcp_session_t session)
 {
+#if SMCP_CONF_MAX_SESSION_COUNT != 1
 	return session->state;
+#else
+	return SMCP_SESSION_STATE_READY;
+#endif
 }
 
 void*
 smcp_session_get_context(smcp_session_t session)
 {
+#if SMCP_CONF_MAX_SESSION_COUNT != 1
 	return session->context;
+#else
+	return NULL;
+#endif
 }
 
 smcp_session_t

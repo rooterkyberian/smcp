@@ -551,7 +551,7 @@ smcp_handle_response() {
 
 	self->current_transaction = handler;
 
-	if(!handler) {
+	if (handler == NULL) {
 		// This is an unknown response. If the packet
 		// if confirmable, send a reset. If not, don't bother.
 		if(self->inbound.packet->tt <= COAP_TRANS_TYPE_NONCONFIRMABLE) {

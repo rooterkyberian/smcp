@@ -240,6 +240,9 @@
 /*****************************************************************************/
 // MARK: - Sessions
 
+#define SMCP_CONF_MAX_SESSION_COUNT		1
+
+
 #ifndef SMCP_CONF_MAX_SESSION_COUNT
 #if SMCP_DTLS || SMCP_TCP || !SMCP_EMBEDDED
 #define SMCP_CONF_MAX_SESSION_COUNT		10
