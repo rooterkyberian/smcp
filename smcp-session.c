@@ -61,7 +61,7 @@ smcp_session_compare(
 
 	{
 		bt_compare_result_t ret = 0;
-		ret = memcmp(&lhs->sockaddr_remote, &rhs->sockaddr_remote, sizeof(lhs->sockaddr_remote));
+		ret = (bt_compare_result_t)memcmp(&lhs->sockaddr_remote, &rhs->sockaddr_remote, sizeof(lhs->sockaddr_remote));
 		if (ret != 0) {
 			return ret;
 		}
@@ -77,7 +77,7 @@ smcp_session_compare(
 
 	{
 		bt_compare_result_t ret = 0;
-		ret = memcmp(&lhs->sockaddr_local, &rhs->sockaddr_local, sizeof(lhs->sockaddr_local));
+		ret = (bt_compare_result_t)memcmp(&lhs->sockaddr_local, &rhs->sockaddr_local, sizeof(lhs->sockaddr_local));
 		if (ret != 0) {
 			return ret;
 		}
@@ -96,12 +96,12 @@ static bt_compare_result_t
 smcp_session_compare_sockaddr(
 	const void* lhs_, const void* rhs_, void* context
 ) {
-	const smcp_transaction_t lhs = (smcp_transaction_t)lhs_;
+	const smcp_session_t lhs = (smcp_session_t)lhs_;
 	const struct session_compare_arguments_s *rhs = (const struct session_compare_arguments_s *)rhs_;
 
 	if (rhs->remote != NULL) {
 		bt_compare_result_t ret = 0;
-		ret = memcmp(&lhs->sockaddr_remote, rhs->remote, sizeof(lhs->sockaddr_remote));
+		ret = (bt_compare_result_t)memcmp(&lhs->sockaddr_remote, rhs->remote, sizeof(lhs->sockaddr_remote));
 		if (ret != 0) {
 			return ret;
 		}
@@ -119,7 +119,7 @@ smcp_session_compare_sockaddr(
 
 	if (rhs->local != NULL) {
 		bt_compare_result_t ret = 0;
-		ret = memcmp(&lhs->sockaddr_local, rhs->local, sizeof(lhs->sockaddr_local));
+		ret = (bt_compare_result_t)memcmp(&lhs->sockaddr_local, rhs->local, sizeof(lhs->sockaddr_local));
 		if (ret != 0) {
 			return ret;
 		}
@@ -191,7 +191,7 @@ smcp_lookup_session(
 	struct session_compare_arguments_s args = { remote, local, type };
 	smcp_session_t ret;
 
-	ret = bt_find(&self->sessions, &args, &smcp_session_compare_sockaddr, NULL);
+	ret = bt_find((void*const*)&self->sessions, &args, &smcp_session_compare_sockaddr, NULL);
 
 	if (ret == NULL) {
 		// No session found, try making another one.
@@ -206,17 +206,18 @@ smcp_lookup_session(
 
 		ret->type = type;
 		if (remote != NULL) {
-			memcpy(&ret->sockaddr_remote, *remote, sizeof(ret->sockaddr_remote));
+			memcpy(&ret->sockaddr_remote, remote, sizeof(ret->sockaddr_remote));
+		}
 		if (local != NULL) {
-			memcpy(&ret->sockaddr_local, *remote, sizeof(ret->sockaddr_local));
+			memcpy(&ret->sockaddr_local, remote, sizeof(ret->sockaddr_local));
 		}
 		
-		bt_insert(&self->sessions, ret, &smcp_session_compare_sockaddr, NULL, NULL);
+		bt_insert((void**)&self->sessions, ret, &smcp_session_compare, NULL, NULL);
 	}
 
 	if (ret != NULL) {
 		// Splay the tree to optimize it.
-		bt_splay(&self->sessions, ret);
+		bt_splay((void**)&self->sessions, ret);
 	}
 
 bail:

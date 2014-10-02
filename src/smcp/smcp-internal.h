@@ -35,7 +35,6 @@
 #include "smcp.h"
 #include "smcp-timer.h"
 #include "fasthash.h"
-#include "smcp-auth.h"
 
 #ifndef SMCP_FUNC_RANDOM_UINT32
 #if defined(__APPLE__)
@@ -119,8 +118,8 @@ struct smcp_s {
 	coap_msg_id_t			last_msg_id;
 
 #if SMCP_CONF_MAX_SESSION_COUNT > 1
-	smcp_session_t          sessions; //! List containing all active sessions.
-	smcp_session_t          current_session;
+	smcp_session_t          sessions; //!^ List containing all active sessions.
+	smcp_session_t          current_session; //!^ Not retained, weak reference.
 #if SMCP_AVOID_MALLOC
 	struct smcp_session_s   session_table[SMCP_CONF_MAX_SESSION_COUNT];
 #endif
@@ -161,11 +160,6 @@ struct smcp_s {
 		struct in_pktinfo		pktinfo;
 #endif
 #endif
-
-#if SMCP_USE_EXPERIMENTAL_DIGEST_AUTH
-		struct smcp_auth_inbound_s     auth;
-#endif
-
 	} inbound;
 
 	//! Outbound packet variables.
@@ -174,23 +168,15 @@ struct smcp_s {
 		coap_size_t				max_packet_len;
 
 		char*					content_ptr;
-		coap_size_t					content_len;
+		coap_size_t				content_len;
 
-		coap_msg_id_t	next_tid;
+		coap_msg_id_t           next_tid;
 
 		coap_option_key_t		last_option_key;
-
-#if SMCP_DTLS
-		bool					use_dtls;
-#endif
 
 		smcp_sockaddr_t			saddr;
 #if SMCP_USE_BSD_SOCKETS
 		char					packet_bytes[SMCP_MAX_PACKET_LENGTH+1];
-#endif
-
-#if SMCP_USE_EXPERIMENTAL_DIGEST_AUTH
-		struct smcp_auth_outbound_s	auth;
 #endif
 
 	} outbound;

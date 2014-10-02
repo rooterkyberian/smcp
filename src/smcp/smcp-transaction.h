@@ -59,6 +59,8 @@ __BEGIN_DECLS
 **	@{
 */
 
+struct smcp_session_s;
+
 /*!	@defgroup smcp_trans Transaction API
 **	@{
 */
@@ -81,6 +83,8 @@ struct smcp_transaction_s {
 	smcp_response_handler_func	callback;
 	void*						context;
 
+	struct smcp_session_s*		session; //!^ Must be retained.
+
 	// This expiration field has different meaning depending on
 	// if this is an observable transaction or not. If it is
 	// not observable, the expiration is when the transaction should
@@ -92,10 +96,6 @@ struct smcp_transaction_s {
 	coap_msg_id_t				token;
 	coap_msg_id_t				msg_id;
 	smcp_sockaddr_t				saddr;
-
-#if SMCP_DTLS
-	void*						dtls_session;
-#endif
 
 #if SMCP_CONF_TRANS_ENABLE_OBSERVING
 	uint32_t					last_observe;

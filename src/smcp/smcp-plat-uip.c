@@ -43,7 +43,6 @@
 #include "smcp.h"
 #include "smcp-internal.h"
 #include "smcp-logging.h"
-#include "smcp-auth.h"
 
 #if CONTIKI
 #include "contiki.h"

@@ -240,7 +240,7 @@
 /*****************************************************************************/
 // MARK: - Sessions
 
-#define SMCP_CONF_MAX_SESSION_COUNT		1
+#define SMCP_CONF_MAX_SESSION_COUNT		10
 
 
 #ifndef SMCP_CONF_MAX_SESSION_COUNT
@@ -272,11 +272,6 @@
 */
 #ifndef SMCP_MAX_CASCADE_COUNT
 #define SMCP_MAX_CASCADE_COUNT      (128)
-#endif
-
-// Going away.
-#ifndef SMCP_USE_EXPERIMENTAL_DIGEST_AUTH
-#define SMCP_USE_EXPERIMENTAL_DIGEST_AUTH	(1)
 #endif
 
 /*****************************************************************************/

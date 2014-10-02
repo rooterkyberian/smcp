@@ -43,7 +43,6 @@
 #include "smcp.h"
 #include "smcp-internal.h"
 #include "smcp-logging.h"
-#include "smcp-auth.h"
 #include "smcp-helpers.h"
 #include "smcp-timer.h"
 
@@ -246,30 +245,27 @@ smcp_status_t
 smcp_outbound_begin_async_response(coap_code_t code, struct smcp_async_response_s* x) {
 	smcp_status_t ret = 0;
 	smcp_t const self = smcp_get_current_instance();
+
+	assert(NULL != x);
+
 	self->inbound.packet = &x->request.header;
 	self->inbound.packet_len = x->request_len;
 	self->inbound.content_ptr = (char*)x->request.header.token + x->request.header.token_len;
 	self->inbound.last_option_key = 0;
 	self->inbound.this_option = x->request.header.token;
 	self->inbound.is_fake = true;
-	self->inbound.saddr = x->remote_saddr;
-#if SMCP_USE_BSD_SOCKETS
-	self->inbound.pktinfo = x->pktinfo;
-#endif
+	self->current_session = x->session;
 	self->is_processing_message = true;
 	self->did_respond = false;
 
-	smcp_outbound_begin_response(code);
+	ret = smcp_outbound_begin_response(code);
+	require_noerr(ret, bail);
 
 	self->outbound.packet->msg_id = self->current_transaction->msg_id;
 
 	self->outbound.packet->tt = x->request.header.tt;
 
 	ret = smcp_outbound_set_token(x->request.header.token, x->request.header.token_len);
-	require_noerr(ret, bail);
-
-	ret = smcp_outbound_set_destaddr(&x->remote_saddr);
-
 	require_noerr(ret, bail);
 
 	assert(coap_verify_packet((const char*)x->request.bytes, x->request_len));
@@ -296,10 +292,7 @@ smcp_start_async_response(struct smcp_async_response_s* x, int flags) {
 
 	assert(coap_verify_packet((const char*)x->request.bytes, x->request_len));
 
-	memcpy(&x->remote_saddr,&self->inbound.saddr,sizeof(x->remote_saddr));
-#if SMCP_USE_BSD_SOCKETS
-	x->pktinfo = self->inbound.pktinfo;
-#endif
+	x->session = smcp_session_retain(self->current_session);
 
 	if(	!(flags & SMCP_ASYNC_RESPONSE_FLAG_DONT_ACK)
 		&& self->inbound.packet->tt==COAP_TRANS_TYPE_CONFIRMABLE
@@ -329,8 +322,8 @@ bail:
 
 smcp_status_t
 smcp_finish_async_response(struct smcp_async_response_s* x) {
-	// This method is largely a hook for future functionality.
-	// It doesn't really do much at the moment, but it may later.
+	smcp_session_release(x->session);
+	x->session = NULL;
 	x->request_len = 0;
 	return SMCP_STATUS_OK;
 }
@@ -339,7 +332,7 @@ bool
 smcp_inbound_is_related_to_async_response(struct smcp_async_response_s* x)
 {
 	smcp_t const self = smcp_get_current_instance();
-	return 0 == memcmp(&x->remote_saddr,&self->inbound.saddr,sizeof(x->remote_saddr));
+	return x->session == self->current_session;
 }
 
 // MARK: -

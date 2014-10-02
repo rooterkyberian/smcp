@@ -45,7 +45,6 @@
 #include "smcp.h"
 #include "smcp-internal.h"
 #include "smcp-logging.h"
-#include "smcp-auth.h"
 #include "smcp-timer.h"
 
 #include "url-helpers.h"
@@ -318,6 +317,8 @@ smcp_inbound_start_packet(
 	self->inbound.packet_len = packet_length;
 	self->inbound.content_type = COAP_CONTENT_TYPE_UNKNOWN;
 
+	self->current_transaction = NULL;
+
 	// Make sure there is a zero at the end of the packet, so that
 	// if the content is a string it will be conveniently zero terminated.
 	// Kind of a hack, but very convenient.
@@ -328,15 +329,30 @@ bail:
 }
 
 smcp_status_t
-smcp_inbound_set_srcaddr(const smcp_sockaddr_t* sockaddr) {
+smcp_inbound_set_addr(const smcp_sockaddr_t* srcaddr, const smcp_sockaddr_t* destaddr) {
 	smcp_t const self = smcp_get_current_instance();
-	if(!self->is_processing_message)
+
+	if (!self->is_processing_message)
 		return SMCP_STATUS_FAILURE;
-	memcpy(&self->inbound.saddr, sockaddr, sizeof(self->inbound.saddr));
+
+	if (NULL != destaddr) {
+		self->inbound.was_sent_to_multicast = SMCP_IS_ADDR_MULTICAST(&destaddr->smcp_addr);
+	}
+
+	self->current_session = smcp_lookup_session(
+		self,
+		SMCP_SESSION_TYPE_UDP,
+		srcaddr,
+		destaddr,
+		0
+	);
+
+	memcpy(&self->inbound.saddr, srcaddr, sizeof(self->inbound.saddr));
 
 	return SMCP_STATUS_OK;
 }
 
+/*
 smcp_status_t
 smcp_inbound_set_destaddr(const smcp_sockaddr_t* sockaddr) {
 	smcp_t const self = smcp_get_current_instance();
@@ -357,6 +373,7 @@ smcp_inbound_set_destaddr(const smcp_sockaddr_t* sockaddr) {
 
 	return SMCP_STATUS_OK;
 }
+*/
 
 const smcp_sockaddr_t* smcp_inbound_get_srcaddr() {
 	return (const smcp_sockaddr_t*)&smcp_get_current_instance()->inbound.saddr;
@@ -494,10 +511,11 @@ smcp_inbound_finish_packet() {
 			}
 		} else {
 			smcp_outbound_begin_response(0);
-			if(ret && !self->inbound.is_dupe)
+			if(ret && !self->inbound.is_dupe) {
 				self->outbound.packet->tt = COAP_TRANS_TYPE_RESET;
-			else
+			} else {
 				self->outbound.packet->tt = COAP_TRANS_TYPE_ACK;
+			}
 			smcp_outbound_set_token(NULL, 0);
 		}
 		ret = smcp_outbound_send();
@@ -534,10 +552,6 @@ smcp_handle_request() {
 #endif
 
 	// TODO: Add proxy-server handler.
-
-	// Authenticate the request.
-	ret = smcp_auth_inbound_init();
-	require_noerr(ret,bail);
 
 #if SMCP_CONF_ENABLE_VHOSTS
 	{

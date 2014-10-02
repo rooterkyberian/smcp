@@ -32,7 +32,6 @@
 #include "smcp.h"
 #include "smcp-internal.h"
 #include "smcp-transaction.h"
-#include "smcp-auth.h"
 
 #if SMCP_AVOID_MALLOC
 // TODO: This should be moved into the SMCP instance.
@@ -575,10 +574,6 @@ smcp_handle_response() {
 		msg_id = handler->msg_id;
 
 		DEBUG_PRINTF("Inbound: Transaction handling response.");
-
-		// Handle any authentication headers.
-		ret = smcp_auth_inbound_init();
-		require_noerr(ret,bail);
 
 		smcp_inbound_reset_next_option();
 

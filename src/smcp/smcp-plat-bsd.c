@@ -46,7 +46,6 @@
 
 #include "smcp-internal.h"
 #include "smcp-logging.h"
-#include "smcp-auth.h"
 
 #include <stdio.h>
 #include <poll.h>
@@ -394,6 +393,8 @@ smcp_process(
 			.msg_controllen = sizeof(cmbuf),
 		};
 		struct cmsghdr *cmsg;
+		smcp_sockaddr_t* src_addr = NULL;
+		smcp_sockaddr_t* dst_addr = NULL;
 
 		packet_len = recvmsg(self->fd, &msg, 0);
 
@@ -405,8 +406,7 @@ smcp_process(
 		require(ret==SMCP_STATUS_OK,bail);
 
 		// Set the source address
-		ret = smcp_inbound_set_srcaddr((smcp_sockaddr_t*)msg.msg_name);
-		require(ret==SMCP_STATUS_OK,bail);
+		src_addr = (smcp_sockaddr_t*)msg.msg_name;
 
 		for (
 			cmsg = CMSG_FIRSTHDR(&msg);
@@ -427,11 +427,19 @@ smcp_process(
 			packet_saddr.smcp_addr = pi->ipi_addr;
 #endif
 			packet_saddr.smcp_port = htons(smcp_get_port(self));
-			ret = smcp_inbound_set_destaddr(&packet_saddr);
-			require(ret==SMCP_STATUS_OK,bail);
+			dst_addr = (smcp_sockaddr_t*)&packet_saddr;
 
 			self->inbound.pktinfo = *pi;
 		}
+
+		self->current_session = smcp_lookup_session(
+			self,
+			SMCP_SESSION_TYPE_UDP,
+			src_addr,
+			dst_addr,
+			0
+		);
+		require(ret==SMCP_STATUS_OK,bail);
 
 		ret = smcp_inbound_finish_packet();
 		require(ret==SMCP_STATUS_OK,bail);

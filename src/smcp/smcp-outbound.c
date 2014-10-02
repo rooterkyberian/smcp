@@ -45,7 +45,6 @@
 #include "smcp.h"
 #include "smcp-internal.h"
 #include "smcp-logging.h"
-#include "smcp-auth.h"
 
 #include "ll.h"
 #include "url-helpers.h"
@@ -96,7 +95,11 @@ smcp_outbound_drop() {
 void
 smcp_outbound_reset()
 {
-	memset(&smcp_get_current_instance()->outbound, 0, sizeof(smcp_get_current_instance()->outbound));
+	memset(
+		&smcp_get_current_instance()->outbound,
+		0,
+		sizeof(smcp_get_current_instance()->outbound)
+	);
 	smcp_get_current_instance()->is_responding = false;
 	smcp_get_current_instance()->did_respond = false;
 }
@@ -177,8 +180,6 @@ smcp_outbound_begin(
 	self->force_current_outbound_code = false;
 	self->is_responding = false;
 
-	smcp_auth_outbound_init();
-
 	return SMCP_STATUS_OK;
 }
 
@@ -187,6 +188,12 @@ smcp_status_t smcp_outbound_begin_response(coap_code_t code) {
 	smcp_t const self = smcp_get_current_instance();
 
 	ret = SMCP_STATUS_OK;
+
+	require_action(
+		!self->current_session,
+		bail,
+		ret = SMCP_STATUS_INVALID_ARGUMENT
+	);
 
 	require_action_string(!self->did_respond,
 		bail,
@@ -209,9 +216,6 @@ smcp_status_t smcp_outbound_begin_response(coap_code_t code) {
 
 	if(self->is_processing_message) {
 		require_noerr(ret=smcp_outbound_set_msg_id(smcp_inbound_get_msg_id()),bail);
-
-		ret = smcp_outbound_set_destaddr(&self->inbound.saddr);
-		require_noerr(ret, bail);
 	}
 bail:
 	if (ret!=SMCP_STATUS_OK) {
@@ -399,6 +403,13 @@ smcp_outbound_add_option_uint(coap_option_key_t key,uint32_t value) {
 }
 
 smcp_status_t
+smcp_outbound_set_session(smcp_session_t session) {
+	smcp_t const self = smcp_get_current_instance();
+	self->current_session = session;
+}
+
+/*
+smcp_status_t
 smcp_outbound_set_destaddr(const smcp_sockaddr_t* sockaddr) {
 	smcp_t const self = smcp_get_current_instance();
 	memcpy(
@@ -417,11 +428,17 @@ smcp_outbound_set_destaddr(const smcp_sockaddr_t* sockaddr) {
 	}
 	return SMCP_STATUS_OK;
 }
+*/
 
 smcp_status_t
-smcp_outbound_set_destaddr_from_host_and_port(const char* addr_str,uint16_t toport) {
+smcp_outbound_set_session_from_host_and_port(
+	const char* addr_str,
+	uint16_t toport,
+	smcp_session_type_t session_type
+) {
 	smcp_status_t ret;
 	SMCP_NON_RECURSIVE smcp_sockaddr_t saddr;
+	smcp_session_t session;
 
 	DEBUG_PRINTF("Outbound: Dest host [%s]:%d",addr_str,toport);
 
@@ -431,20 +448,38 @@ smcp_outbound_set_destaddr_from_host_and_port(const char* addr_str,uint16_t topo
 	}
 
 	ret = smcp_internal_lookup_hostname(addr_str, &saddr);
-	require_noerr(ret,bail);
+	require_noerr(ret, bail);
 
 	saddr.smcp_port = htons(toport);
 
-	ret = smcp_outbound_set_destaddr(&saddr);
-	require_noerr(ret, bail);
-
 	if (SMCP_IS_ADDR_MULTICAST(&saddr.smcp_addr)) {
 		smcp_t const self = smcp_get_current_instance();
+
+		require_action(
+			smcp_session_type_supports_multicast(session_type),
+			bail,
+			ret = SMCP_STATUS_MULTICAST_NOT_SUPPORTED
+		);
+
 		check(self->outbound.packet->tt != COAP_TRANS_TYPE_CONFIRMABLE);
 		if(self->outbound.packet->tt == COAP_TRANS_TYPE_CONFIRMABLE) {
 			self->outbound.packet->tt = COAP_TRANS_TYPE_NONCONFIRMABLE;
 		}
 	}
+
+	session = smcp_lookup_session(
+		smcp_get_current_instance(),
+		session_type,
+		&saddr,
+		NULL,
+		0
+	);
+
+	require_action(session != NULL, bail, ret = SMCP_STATUS_MALLOC_FAILURE);
+
+	ret = smcp_outbound_set_session(session);
+	require_noerr(ret, bail);
+
 
 bail:
 	return ret;
@@ -459,9 +494,11 @@ smcp_outbound_set_uri(
 	SMCP_NON_RECURSIVE struct url_components_s components;
 	SMCP_NON_RECURSIVE uint16_t toport;
 	SMCP_NON_RECURSIVE char* uri_copy;
+	smcp_session_type_t session_type;
 
 	memset((void*)&components, 0, sizeof(components));
 	toport = COAP_DEFAULT_PORT;
+	session_type = SMCP_SESSION_TYPE_UDP;
 	uri_copy = NULL;
 
 	require_action(uri, bail, ret = SMCP_STATUS_INVALID_ARGUMENT);
@@ -526,10 +563,10 @@ smcp_outbound_set_uri(
 	if(components.protocol) {
 #if SMCP_DTLS
 		if(strequal_const(components.protocol, "coaps")) {
-			// There is a lot more that is needed for this to work...
-			toport = COAP_DEFAULT_TLS_PORT;
-
-			require_noerr(ret = smcp_auth_outbound_use_dtls(), bail);
+			if (NULL == components.port) {
+				toport = COAP_DEFAULT_TLS_PORT;
+			}
+			session_type = SMCP_SESSION_TYPE_DTLS;
 		} else
 #endif
 		if(!strequal_const(components.protocol, "coap")) {
@@ -539,7 +576,7 @@ smcp_outbound_set_uri(
 				ret=SMCP_STATUS_INVALID_ARGUMENT,
 				"No proxy URL configured"
 			);
-			require_action(uri!=self->proxy_url,bail,ret = SMCP_STATUS_INVALID_ARGUMENT);
+			require_action(uri != self->proxy_url,bail,ret = SMCP_STATUS_INVALID_ARGUMENT);
 
 			ret = smcp_outbound_add_option(COAP_OPTION_PROXY_URI, uri, SMCP_CSTR_LEN);
 			require_noerr(ret, bail);
@@ -548,7 +585,7 @@ smcp_outbound_set_uri(
 		}
 	}
 
-	if(!(flags&SMCP_MSG_SKIP_AUTHORITY)) {
+	if(!(flags & SMCP_MSG_SKIP_AUTHORITY)) {
 		if(components.host && !string_contains_colons(components.host)) {
 			ret = smcp_outbound_add_option(COAP_OPTION_URI_HOST, components.host, SMCP_CSTR_LEN);
 			require_noerr(ret, bail);
@@ -559,15 +596,19 @@ smcp_outbound_set_uri(
 		}
 	}
 
+//	if(components.username) {
+//		ret = smcp_auth_outbound_set_credentials(components.username, components.password);
+//		require_noerr(ret, bail);
+//	}
+
 	if(	!(flags&SMCP_MSG_SKIP_DESTADDR)
 		&& components.host && components.host[0]!=0
 	) {
-		ret = smcp_outbound_set_destaddr_from_host_and_port(components.host,toport);
-		require_noerr(ret, bail);
-	}
-
-	if(components.username) {
-		ret = smcp_auth_outbound_set_credentials(components.username, components.password);
+		ret = smcp_outbound_set_session_from_host_and_port(
+			components.host,
+			toport,
+			session_type
+		);
 		require_noerr(ret, bail);
 	}
 
@@ -592,7 +633,7 @@ smcp_outbound_set_uri(
 	if(components.query) {
 		SMCP_NON_RECURSIVE char* key;
 
-		while(url_form_next_value(&components.query,&key,NULL)) {
+		while(url_form_next_value(&components.query, &key, NULL)) {
 			coap_size_t len = (coap_size_t)strlen(key);
 
 			if (len) {
@@ -705,24 +746,33 @@ bail:
 
 smcp_status_t
 smcp_outbound_set_var_content_int(int v) {
+	smcp_outbound_add_option_uint(
+		COAP_OPTION_CONTENT_TYPE,
+		SMCP_CONTENT_TYPE_APPLICATION_FORM_URLENCODED
+	);
 #if SMCP_AVOID_PRINTF
-	char nstr[12];
-	smcp_outbound_add_option_uint(COAP_OPTION_CONTENT_TYPE, SMCP_CONTENT_TYPE_APPLICATION_FORM_URLENCODED);
-	smcp_outbound_append_content("v=", SMCP_CSTR_LEN);
-	return smcp_outbound_append_content(int32_to_dec_cstr(nstr,v), SMCP_CSTR_LEN);
+	{
+		char nstr[12];
+		smcp_outbound_append_content("v=", SMCP_CSTR_LEN);
+		return smcp_outbound_append_content(int32_to_dec_cstr(nstr,v), SMCP_CSTR_LEN);
+	}
 #else
-	smcp_outbound_add_option_uint(COAP_OPTION_CONTENT_TYPE, SMCP_CONTENT_TYPE_APPLICATION_FORM_URLENCODED);
 	return smcp_outbound_set_content_formatted_const("v=%d",v);
 #endif
 }
 
 smcp_status_t
 smcp_outbound_set_var_content_unsigned_int(unsigned int v) {
+	smcp_outbound_add_option_uint(
+		COAP_OPTION_CONTENT_TYPE,
+		SMCP_CONTENT_TYPE_APPLICATION_FORM_URLENCODED
+	);
 #if SMCP_AVOID_PRINTF
-	char nstr[11];
-	smcp_outbound_add_option_uint(COAP_OPTION_CONTENT_TYPE, SMCP_CONTENT_TYPE_APPLICATION_FORM_URLENCODED);
-	smcp_outbound_append_content("v=", SMCP_CSTR_LEN);
-	return smcp_outbound_append_content(uint32_to_dec_cstr(nstr,v), SMCP_CSTR_LEN);
+	{
+		char nstr[12];
+		smcp_outbound_append_content("v=", SMCP_CSTR_LEN);
+		return smcp_outbound_append_content(uint32_to_dec_cstr(nstr,v), SMCP_CSTR_LEN);
+	}
 #else
 	return smcp_outbound_set_content_formatted_const("v=%u",v);
 #endif
@@ -730,11 +780,16 @@ smcp_outbound_set_var_content_unsigned_int(unsigned int v) {
 
 smcp_status_t
 smcp_outbound_set_var_content_unsigned_long_int(unsigned long int v) {
+	smcp_outbound_add_option_uint(
+		COAP_OPTION_CONTENT_TYPE,
+		SMCP_CONTENT_TYPE_APPLICATION_FORM_URLENCODED
+	);
 #if SMCP_AVOID_PRINTF
-	char nstr[11];
-	smcp_outbound_add_option_uint(COAP_OPTION_CONTENT_TYPE, SMCP_CONTENT_TYPE_APPLICATION_FORM_URLENCODED);
-	smcp_outbound_append_content("v=", SMCP_CSTR_LEN);
-	return smcp_outbound_append_content(uint32_to_dec_cstr(nstr,v), SMCP_CSTR_LEN);
+{
+		char nstr[12];
+		smcp_outbound_append_content("v=", SMCP_CSTR_LEN);
+		return smcp_outbound_append_content(uint32_to_dec_cstr(nstr,v), SMCP_CSTR_LEN);
+	}
 #else
 	return smcp_outbound_set_content_formatted_const("v=%ul",v);
 #endif
@@ -744,8 +799,9 @@ smcp_outbound_set_var_content_unsigned_long_int(unsigned long int v) {
 smcp_status_t
 smcp_outbound_quick_response(coap_code_t code, const char* body) {
 	smcp_outbound_begin_response(code);
-	if(body)
+	if (body) {
 		smcp_outbound_append_content(body, SMCP_CSTR_LEN);
+	}
 	return smcp_outbound_send();
 }
 
@@ -754,15 +810,10 @@ smcp_outbound_send() {
 	smcp_status_t ret = SMCP_STATUS_FAILURE;
 	smcp_t const self = smcp_get_current_instance();
 
-	if(self->outbound.packet->code) {
-		ret = smcp_auth_outbound_finalize();
-		require_noerr(ret,bail);
-	}
+	coap_size_t header_len = (coap_size_t)(smcp_outbound_get_content_ptr(NULL)-(char*)self->outbound.packet);
 
 #if DEBUG
 	{
-		coap_size_t header_len = (coap_size_t)(smcp_outbound_get_content_ptr(NULL)-(char*)self->outbound.packet);
-
 		// Remove the start-of-payload marker if we have no payload.
 		if(!smcp_get_current_instance()->outbound.content_len)
 			header_len--;
@@ -773,8 +824,9 @@ smcp_outbound_send() {
 	}
 #endif // DEBUG
 
-	if(self->current_transaction)
+	if (self->current_transaction) {
 		self->current_transaction->sent_code = self->outbound.packet->code;
+	}
 
 #if defined(SMCP_DEBUG_OUTBOUND_DROP_PERCENT)
 	if(SMCP_DEBUG_OUTBOUND_DROP_PERCENT*SMCP_RANDOM_MAX>SMCP_FUNC_RANDOM_UINT32()) {
@@ -788,20 +840,37 @@ smcp_outbound_send() {
 	}
 #endif
 
-#if SMCP_DTLS
-	if(smcp_auth_outbound_is_using_dtls()) {
-		extern smcp_status_t smcp_outbound_send_secure_hook();
-		require((ret = smcp_outbound_send_secure_hook()) == 0, bail);
-	} else
-#endif
-	{
-		extern smcp_status_t smcp_outbound_send_hook();
-		require((ret = smcp_outbound_send_hook()) == 0, bail);
+	// We need a session to send.
+	require_action(self->current_session != NULL, bail, ret = SMCP_STATUS_INVALID_ARGUMENT);
+
+	if ( (NULL != self->current_transaction)
+		&& (self->current_transaction->session != self->current_session)
+	) {
+		// Update the session stored in the transaction.
+		smcp_session_release(self->current_transaction->session);
+		self->current_transaction->session = smcp_session_retain(self->current_session);
 	}
 
-	if(smcp_get_current_instance()->is_responding)
-		smcp_get_current_instance()->did_respond = true;
-	smcp_get_current_instance()->is_responding = false;
+	if ((self->outbound.packet->tt == COAP_TRANS_TYPE_ACK)
+		&& smcp_session_type_is_reliable(smcp_session_get_type(self->current_session))
+	) {
+		// If the session type is reliable, we don't bother
+		// sending acks.
+	} else {
+		ret = smcp_session_send(
+			self->current_session,
+			self->outbound.packet,
+			header_len,
+			0 // FLAGS
+		);
+	}
+
+	require(ret == SMCP_STATUS_OK, bail);
+
+	if (self->is_responding) {
+		self->did_respond = true;
+	}
+	self->is_responding = false;
 
 	ret = SMCP_STATUS_OK;
 bail:

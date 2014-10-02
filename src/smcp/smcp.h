@@ -112,6 +112,7 @@ enum {
 	SMCP_STATUS_ASYNC_RESPONSE		= -24,
 	SMCP_STATUS_UNAUTHORIZED		= -25,
 	SMCP_STATUS_BAD_PACKET			= -26,
+	SMCP_STATUS_MULTICAST_NOT_SUPPORTED		= -27,
 };
 
 typedef int smcp_status_t;
@@ -178,7 +179,7 @@ typedef smcp_callback_func smcp_inbound_resend_func;
 #define SMCP_LIBRARY_VERSION_CHECK()	do { } while(0)
 #else
 #ifndef ___SMCP_CONFIG_ID
-#define ___SMCP_CONFIG_ID 0
+#define ___SMCP_CONFIG_ID 1
 #endif
 SMCP_API_EXTERN void ___smcp_check_version(uint32_t x);
 #define SMCP_LIBRARY_VERSION_CHECK()	___smcp_check_version(___SMCP_CONFIG_ID)
@@ -296,19 +297,27 @@ SMCP_API_EXTERN smcp_status_t smcp_inbound_start_packet(
 	coap_size_t	packet_length
 );
 
-//! Sets the address from where this packet originated.
-/*!	Must be called between smcp_inbound_start_packet() and smcp_inbound_finish_packet(). */
-/*!	If you are using BSD sockets, you don't need to use this function. */
-SMCP_API_EXTERN smcp_status_t smcp_inbound_set_srcaddr(const smcp_sockaddr_t* addr);
+//! Sets the session associated with this packet.
+/*!	Must be called between smcp_inbound_start_packet() and
+**	smcp_inbound_finish_packet().
+**
+**	Use either this or smcp_inbound_set_addr(). Don't use both.
+**
+**	@sa smcp_inbound_set_addr()
+*/
+SMCP_API_EXTERN smcp_status_t smcp_inbound_set_session(smcp_session_t session);
 
-//! Sets the address to where this packet was sent to.
-/*!	This method is optional in describing the inbound packet,
-**	but it is necessary to correctly implement multicast behavior.
+//! Sets the address from where this packet originated.
+/*!	Must be called between smcp_inbound_start_packet() and
+**	smcp_inbound_finish_packet().
 **
-**	Must be called between smcp_inbound_start_packet() and smcp_inbound_finish_packet().
-**
-**	If you are using BSD sockets, you don't need to use this function. */
-SMCP_API_EXTERN smcp_status_t smcp_inbound_set_destaddr(const smcp_sockaddr_t* addr);
+**	Use either this or smcp_inbound_set_session(). Don't use both.
+**	@sa smcp_inbound_set_session()
+*/
+SMCP_API_EXTERN smcp_status_t smcp_inbound_set_addr(
+	const smcp_sockaddr_t* srcaddr,
+	const smcp_sockaddr_t* destaddr
+);
 
 //! Call this function if the inbound packet has been truncated.
 /*!	Calling this will instruct the instance to not process
@@ -316,14 +325,15 @@ SMCP_API_EXTERN smcp_status_t smcp_inbound_set_destaddr(const smcp_sockaddr_t* a
 **	response, if appropriate. You must still call smcp_inbound_set_srcaddr()
 **	and smcp_inbound_finish_packet().
 **
-**	@note Not currently implemented. */
-/*!	Must be called between smcp_inbound_start_packet() and smcp_inbound_finish_packet(). */
-/*!	If you are using BSD sockets, you don't need to use this function. */
+**	@note Not currently implemented.
+**
+**	Must be called between smcp_inbound_start_packet() and
+**	smcp_inbound_finish_packet().
+*/
 SMCP_API_EXTERN void smcp_inbound_packet_was_truncated(void);
 
 //! Indicate that we are finished describing the inbound packet.
 /*!	Must be called after smcp_inbound_start_packet(). */
-/*!	If you are using BSD sockets, you don't need to use this function. */
 SMCP_API_EXTERN smcp_status_t smcp_inbound_finish_packet(void);
 
 /*!	@} */
@@ -424,9 +434,8 @@ SMCP_API_EXTERN smcp_status_t smcp_outbound_begin_response(coap_code_t code);
 //!	Changes the code on the current outbound packet.
 SMCP_API_EXTERN smcp_status_t smcp_outbound_set_code(coap_code_t code);
 
-//!	Sets the destination address and port.
 /*!	Not necessary if you called smcp_outbound_begin_response(). */
-SMCP_API_EXTERN smcp_status_t smcp_outbound_set_destaddr(const smcp_sockaddr_t* sockaddr);
+SMCP_API_EXTERN smcp_status_t smcp_outbound_set_session(smcp_session_t session);
 
 //!	Adds the given option to the outbound packet.
 /*!
@@ -527,14 +536,7 @@ SMCP_API_EXTERN smcp_status_t smcp_outbound_quick_response(coap_code_t code, con
 #define SMCP_ASYNC_RESPONSE_FLAG_DONT_ACK		(1<<0)
 
 struct smcp_async_response_s {
-	smcp_sockaddr_t			remote_saddr;
-#if SMCP_USE_BSD_SOCKETS
-#if SMCP_BSD_SOCKETS_NET_FAMILY==AF_INET6
-	struct in6_pktinfo		pktinfo;
-#elif SMCP_BSD_SOCKETS_NET_FAMILY==AF_INET
-	struct in_pktinfo		pktinfo;
-#endif
-#endif
+	smcp_session_t session;	//!^ Retained!
 
 	coap_size_t request_len;
 	union {
