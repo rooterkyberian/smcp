@@ -210,117 +210,133 @@ smcp_get_port(smcp_t self) {
 	return ntohs(saddr.smcp_port);
 }
 
+int
+smcp_plat_update_pollfds(
+	smcp_t self,
+    struct pollfd fds[],
+	int maxfds
+) {
+	int ret = 1;
 
-smcp_status_t
-smcp_outbound_send_hook() {
-	smcp_status_t ret = SMCP_STATUS_FAILURE;
-	smcp_t const self = smcp_get_current_instance();
-	coap_size_t header_len;
+	require_quiet(maxfds > 0, bail);
 
-	header_len = (coap_size_t)(smcp_outbound_get_content_ptr(NULL)-(char*)self->outbound.packet);
+	assert(fds != NULL);
 
-	// Remove the start-of-payload marker if we have no payload.
-	if(!smcp_get_current_instance()->outbound.content_len)
-		header_len--;
+	fds->fd = self->fd;
+	fds->events = POLLIN | POLLHUP;
+	fds->revents = 0;
+	fds++;
+	maxfds--;
 
-	require_string(smcp_get_current_instance()->outbound.saddr.___smcp_family!=0,bail,"Destaddr not set");
+bail:
+	return ret;
+}
 
-#if VERBOSE_DEBUG
-	{
-		static const char prefix[] = "Outbound:\t";
-		char from_addr_str[50] = "???";
-		char addr_str[50] = "???";
-		uint16_t port = 0;
-		port = ntohs(self->outbound.saddr.smcp_port);
-		SMCP_ADDR_NTOP(addr_str,sizeof(addr_str),&self->outbound.saddr.smcp_addr);
-#if SMCP_BSD_SOCKETS_NET_FAMILY==AF_INET6
-		SMCP_ADDR_NTOP(from_addr_str,sizeof(from_addr_str),&self->inbound.pktinfo.ipi6_addr);
-#elif SMCP_BSD_SOCKETS_NET_FAMILY==AF_INET
-		SMCP_ADDR_NTOP(from_addr_str,sizeof(from_addr_str),&self->inbound.pktinfo.ipi_addr);
-#endif
 
-		DEBUG_PRINTF("%sTO -> [%s]:%d",prefix,addr_str,(int)port);
-		DEBUG_PRINTF("%sFROM -> [%s]",prefix,from_addr_str);
-		coap_dump_header(
-			SMCP_DEBUG_OUT_FILE,
-			prefix,
-			self->outbound.packet,
-			header_len+smcp_get_current_instance()->outbound.content_len
+static ssize_t
+sendtofrom(
+	int fd,
+	const void *data, size_t len, int flags,
+	const struct sockaddr * saddr_to, socklen_t socklen_to,
+	const struct sockaddr * saddr_from, socklen_t socklen_from
+)
+{
+	ssize_t ret = -1;
+	if ((socklen_from == 0) || (saddr_from->sa_family != saddr_to->sa_family)) {
+		ret = sendto(
+			fd,
+			data,
+			len,
+			0,
+			(struct sockaddr *)&saddr_to,
+			socklen_to
 		);
-	}
-#endif
-
-	ssize_t sent_bytes;
-
-	if(self->is_processing_message)
-	{
-		struct iovec iov = {
-			self->outbound.packet_bytes,
-			header_len + self->outbound.content_len
-		};
+	} else {
+		struct iovec iov = { (void *)data, len };
 		uint8_t cmbuf[CMSG_SPACE(sizeof (struct in6_pktinfo))];
 		struct cmsghdr *scmsgp;
 		struct msghdr msg = {
-			.msg_name = &self->outbound.saddr,
-			.msg_namelen = sizeof(self->outbound.saddr),
+			.msg_name = &saddr_to,
+			.msg_namelen = socklen_to,
 			.msg_iov = &iov,
 			.msg_iovlen = 1,
 			.msg_control = cmbuf,
 			.msg_controllen = sizeof(cmbuf),
 		};
-#if SMCP_BSD_SOCKETS_NET_FAMILY==AF_INET6
-		struct in6_pktinfo *pktinfo;
-		scmsgp = CMSG_FIRSTHDR(&msg);
-		scmsgp->cmsg_level = IPPROTO_IPV6;
-		scmsgp->cmsg_type = IPV6_PKTINFO;
-		scmsgp->cmsg_len = CMSG_LEN(sizeof(struct in6_pktinfo));
-		pktinfo = (struct in6_pktinfo *)(CMSG_DATA(scmsgp));
-		*pktinfo = self->inbound.pktinfo;
-#elif SMCP_BSD_SOCKETS_NET_FAMILY==AF_INET
-		struct in_pktinfo *pktinfo;
-		scmsgp = CMSG_FIRSTHDR(&msg);
-		scmsgp->cmsg_level = IPPROTO_IPV4;
-		scmsgp->cmsg_type = IP_PKTINFO;
-		scmsgp->cmsg_len = CMSG_LEN(sizeof(struct in_pktinfo));
-		pktinfo = (struct in_pktinfo *)(CMSG_DATA(scmsgp));
-		*pktinfo = self->inbound.pktinfo;
+
+#if defined(AF_INET6)
+		if (saddr_to->sa_family == AF_INET6) {
+			struct in6_pktinfo *pktinfo;
+			scmsgp = CMSG_FIRSTHDR(&msg);
+			scmsgp->cmsg_level = IPPROTO_IPV6;
+			scmsgp->cmsg_type = IPV6_PKTINFO;
+			scmsgp->cmsg_len = CMSG_LEN(sizeof(struct in6_pktinfo));
+			pktinfo = (struct in6_pktinfo *)(CMSG_DATA(scmsgp));
+
+			pktinfo->ipi6_addr = ((struct sockaddr_in6*)saddr_from)->sin6_addr;
+			pktinfo->ipi6_ifindex = ((struct sockaddr_in6*)saddr_from)->sin6_scope_id;
+		} else
 #endif
-		sent_bytes = sendmsg(self->fd, &msg, 0);
-		memset(pktinfo,0,sizeof(*pktinfo));
-	} else {
-		sent_bytes = sendto(
-			self->fd,
-			self->outbound.packet_bytes,
-			header_len +
-			self->outbound.content_len,
+
+		if (saddr_to->sa_family == AF_INET) {
+			struct in_pktinfo *pktinfo;
+			scmsgp = CMSG_FIRSTHDR(&msg);
+			scmsgp->cmsg_level = IPPROTO_IPV4;
+			scmsgp->cmsg_type = IP_PKTINFO;
+			scmsgp->cmsg_len = CMSG_LEN(sizeof(struct in_pktinfo));
+			pktinfo = (struct in_pktinfo *)(CMSG_DATA(scmsgp));
+
+			pktinfo->ipi_spec_dst = ((struct sockaddr_in*)saddr_from)->sin_addr;
+			pktinfo->ipi_addr = ((struct sockaddr_in*)saddr_to)->sin_addr;
+			pktinfo->ipi_ifindex = 0;
+		}
+
+		ret = sendmsg(fd, &msg, flags);
+	}
+
+	return ret;
+}
+
+
+smcp_status_t
+smcp_plat_session_send_udp(smcp_session_t session, const uint8_t* data, coap_size_t len, int flags)
+{
+	assert(session->type == SMCP_SESSION_TYPE_UDP);
+
+	smcp_status_t ret = SMCP_STATUS_FAILURE;
+	const int fd = (int)(intptr_t)session->context;
+	ssize_t sent_bytes = -1;
+
+	assert(fd >= 0);
+
+	errno = EDESTADDRREQ;
+
+	//sent_bytes = send(fd, data, len, flags);
+
+	if ((sent_bytes == -1) && ((errno == EDESTADDRREQ) || (errno == EINVAL))) {
+		sent_bytes = sendtofrom(
+			fd,
+			data,
+			len,
 			0,
-			(struct sockaddr *)&self->outbound.saddr,
-			sizeof(self->outbound.saddr)
+			(struct sockaddr *)&session->sockaddr_remote,
+			sizeof(&session->sockaddr_remote),
+			(struct sockaddr *)&session->sockaddr_local,
+			sizeof(&session->sockaddr_local)
 		);
 	}
 
 	require_action_string(
-		(sent_bytes>=0),
+		(sent_bytes >= 0),
 		bail, ret = SMCP_STATUS_ERRNO, strerror(errno)
 	);
 
 	require_action_string(
-		sent_bytes,
+		(sent_bytes != 0),
 		bail, ret = SMCP_STATUS_FAILURE, "sendto() returned zero."
 	);
 
 	ret = SMCP_STATUS_OK;
-bail:
-	return ret;
-}
-
-smcp_status_t
-smcp_outbound_send_secure_hook() {
-	smcp_status_t ret = SMCP_STATUS_FAILURE;
-
-	// DTLS support not yet implemeted.
-	ret = SMCP_STATUS_NOT_IMPLEMENTED;
-
 bail:
 	return ret;
 }
@@ -422,6 +438,7 @@ smcp_process(
 #if SMCP_BSD_SOCKETS_NET_FAMILY==AF_INET6
 			struct in6_pktinfo *pi = (struct in6_pktinfo *)CMSG_DATA(cmsg);
 			packet_saddr.smcp_addr = pi->ipi6_addr;
+			packet_saddr.sin6_scope_id = pi->ipi6_ifindex;
 #elif SMCP_BSD_SOCKETS_NET_FAMILY==AF_INET
 			struct in_pktinfo *pi = (struct in_pktinfo *)CMSG_DATA(cmsg);
 			packet_saddr.smcp_addr = pi->ipi_addr;
@@ -545,6 +562,14 @@ bail:
 		freeaddrinfo(results);
 	return ret;
 }
+
+
+
+
+
+
+
+
 
 
 #endif // #if SMCP_USE_BSD_SOCKETS

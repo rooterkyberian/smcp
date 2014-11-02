@@ -212,6 +212,12 @@ SMCP_API_EXTERN smcp_t smcp_get_current_instance(void);
 
 //! Allocates and initializes an SMCP instance.
 SMCP_API_EXTERN smcp_t smcp_create(uint16_t port);
+
+SMCP_API_EXTERN smcp_status_t smcp_bind(
+	smcp_t self,
+	smcp_session_type_t type,
+	const smcp_sockaddr_t* sockaddr
+);
 #endif
 
 //!	Sets the URL to use as a CoAP proxy.

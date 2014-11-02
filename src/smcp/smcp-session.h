@@ -56,17 +56,17 @@ typedef struct smcp_session_s* smcp_session_t;
 
 // This structure may one day be entirely opaque
 struct smcp_session_s {
-#if SMCP_CONF_MAX_SESSION_COUNT > 1
-#if SMCP_TRANSACTIONS_USE_BTREE
+//#if SMCP_CONF_MAX_SESSION_COUNT > 1
+//#if SMCP_TRANSACTIONS_USE_BTREE
 	struct bt_item_s			bt_item;
-#else
+//#else
 	struct ll_item_s			ll_item;
-#endif
+//#endif
 	int refcount;
 	smcp_session_type_t type;
 	smcp_session_state_t state;
 	void* context;
-#endif
+//#endif
 	smcp_sockaddr_t sockaddr_remote;
 	smcp_sockaddr_t sockaddr_local;
 };
@@ -74,7 +74,7 @@ struct smcp_session_s {
 //////////////////////////////////////////////////////////////////////////
 // The following functions are definately public
 
-smcp_session_t smcp_lookup_session(
+SMCP_API_EXTERN smcp_session_t smcp_lookup_session(
 	smcp_t smcp,
 	smcp_session_type_t type,
 	const smcp_sockaddr_t* remote,
@@ -82,17 +82,17 @@ smcp_session_t smcp_lookup_session(
 	int flags
 );
 
-smcp_session_type_t smcp_session_get_type(smcp_session_t session);
+SMCP_API_EXTERN smcp_session_type_t smcp_session_get_type(smcp_session_t session);
 
-smcp_session_state_t smcp_session_get_state(smcp_session_t session);
+SMCP_API_EXTERN smcp_session_state_t smcp_session_get_state(smcp_session_t session);
 
-void* smcp_session_get_context(smcp_session_t session);
+SMCP_API_EXTERN void* smcp_session_get_context(smcp_session_t session);
 
-smcp_session_t smcp_get_current_session();
+SMCP_API_EXTERN smcp_session_t smcp_get_current_session();
 
-bool smcp_session_type_supports_multicast(smcp_session_type_t session_type);
+SMCP_API_EXTERN bool smcp_session_type_supports_multicast(smcp_session_type_t session_type);
 
-bool smcp_session_type_is_reliable(smcp_session_type_t session_type);
+SMCP_API_EXTERN bool smcp_session_type_is_reliable(smcp_session_type_t session_type);
 
 //////////////////////////////////////////////////////////////////////////
 // The following functions MAY end up being public, but I'm not sure.
@@ -100,6 +100,8 @@ bool smcp_session_type_is_reliable(smcp_session_type_t session_type);
 smcp_session_t smcp_session_retain(smcp_session_t session);
 
 void smcp_session_release(smcp_session_t session);
+
+bool smcp_session_is_local(smcp_session_t session);
 
 smcp_status_t smcp_session_get_error(smcp_session_t session);
 
@@ -110,7 +112,7 @@ void smcp_session_clear_error(smcp_session_t session);
 
 smcp_status_t smcp_collect_sessions(smcp_t smcp);
 
-smcp_status_t smcp_session_send(smcp_session_t* session, const uint8_t* data, coap_size_t len, int flags);
+smcp_status_t smcp_session_send(smcp_session_t session, const uint8_t* data, coap_size_t len, int flags);
 
 __END_DECLS
 

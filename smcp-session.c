@@ -209,10 +209,13 @@ smcp_lookup_session(
 			memcpy(&ret->sockaddr_remote, remote, sizeof(ret->sockaddr_remote));
 		}
 		if (local != NULL) {
-			memcpy(&ret->sockaddr_local, remote, sizeof(ret->sockaddr_local));
+			memcpy(&ret->sockaddr_local, local, sizeof(ret->sockaddr_local));
 		}
 		
 		bt_insert((void**)&self->sessions, ret, &smcp_session_compare, NULL, NULL);
+
+		// TEMPORARY! TODO: Remove
+		ret->context = (void*)(intptr_t)self->fd;
 	}
 
 	if (ret != NULL) {
@@ -300,6 +303,7 @@ smcp_session_release(smcp_session_t session)
 #endif
 }
 
+
 smcp_status_t
 smcp_session_get_error(smcp_session_t session)
 {
@@ -312,9 +316,31 @@ smcp_session_clear_error(smcp_session_t session)
 {
 }
 
-smcp_status_t
-smcp_session_send(smcp_session_t* session, const uint8_t* data, coap_size_t len, int flags)
+bool
+smcp_session_is_local(smcp_session_t session)
 {
-	// TODO: Writeme!
+	const smcp_sockaddr_t* const saddr = &session->sockaddr_remote;
+
+	if (NULL == saddr) {
+		return false;
+	}
+
+	if (htonl(smcp_get_port(smcp_get_current_instance())) != saddr->smcp_port) {
+		return false;
+	}
+
+	return SMCP_IS_ADDR_LOOPBACK(&saddr->smcp_addr);
+}
+
+
+smcp_status_t
+smcp_session_send(smcp_session_t session, const uint8_t* data, coap_size_t len, int flags)
+{
+	switch (session->type) {
+	case SMCP_SESSION_TYPE_UDP:
+		return smcp_plat_session_send_udp(session, data, len, flags);
+	default:
+		break;
+	}
 	return SMCP_STATUS_NOT_IMPLEMENTED;
 }

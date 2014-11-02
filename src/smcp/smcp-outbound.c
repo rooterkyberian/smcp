@@ -406,6 +406,7 @@ smcp_status_t
 smcp_outbound_set_session(smcp_session_t session) {
 	smcp_t const self = smcp_get_current_instance();
 	self->current_session = session;
+	return 0;
 }
 
 /*

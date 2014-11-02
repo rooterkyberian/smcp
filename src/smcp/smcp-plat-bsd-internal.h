@@ -83,6 +83,11 @@
 #error Unsupported value for SMCP_BSD_SOCKETS_NET_FAMILY
 #endif // SMCP_BSD_SOCKETS_NET_FAMILY
 
+typedef struct {
+} smcp_bound_port;
+
 SMCP_INTERNAL_EXTERN smcp_status_t smcp_internal_lookup_hostname(const char* hostname, smcp_sockaddr_t* sockaddr);
+
+smcp_status_t smcp_plat_session_send_udp(smcp_session_t session, const uint8_t* data, coap_size_t len, int flags);
 
 #endif

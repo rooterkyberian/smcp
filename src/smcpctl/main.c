@@ -709,14 +709,30 @@ main(
 	while((gRet != ERRORCODE_QUIT) && !feof(stdin)) {
 #if HAVE_LIBREADLINE
 		if(istty) {
-			struct pollfd polltable[2] = {
+			struct pollfd polltable[10] = {
 				{ fileno(stdin), POLLIN | POLLHUP, 0 },
-				{ smcp_get_fd(gSMCPInstance), POLLIN | POLLHUP, 0 },
 			};
+			int pollfdcount = 1;
+			int smcppollfdcount = 0;
+			int smcpmaxpollfds = sizeof(polltable)/sizeof(*polltable)-1;
 
-			if(poll(
+			smcppollfdcount = smcp_plat_update_pollfds(gSMCPInstance, polltable+1, smcpmaxpollfds);
+
+			if (smcppollfdcount < 0) {
+				perror("smcp_plat_update_pollfds");
+				abort();
+			}
+
+			if (smcppollfdcount > smcpmaxpollfds) {
+				perror("too many fds");
+				abort();
+			}
+
+			pollfdcount += smcppollfdcount;
+
+			if (poll(
 					polltable,
-					2,
+					pollfdcount,
 					smcp_get_timeout(gSMCPInstance)
 				) < 0
 			) {

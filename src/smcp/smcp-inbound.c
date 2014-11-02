@@ -189,17 +189,7 @@ smcp_inbound_option_strequal(coap_option_key_t key,const char* cstr) {
 
 bool
 smcp_inbound_origin_is_local() {
-	const smcp_sockaddr_t* const saddr = smcp_inbound_get_srcaddr();
-
-	if (NULL == saddr) {
-		return false;
-	}
-
-	if (htonl(smcp_get_port(smcp_get_current_instance())) != saddr->smcp_port) {
-		return false;
-	}
-
-	return SMCP_IS_ADDR_LOOPBACK(&saddr->smcp_addr);
+	return smcp_session_is_local(smcp_get_current_session());
 }
 
 char*
