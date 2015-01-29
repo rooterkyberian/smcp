@@ -77,4 +77,4 @@ SMCP_API_EXTERN smcp_status_t smcp_variable_node_request_handler(
 
 __END_DECLS
 
-#endif //__SMCP_TIMER_NODE_H__
+#endif //__SMCP_VARIABLE_NODE_H__

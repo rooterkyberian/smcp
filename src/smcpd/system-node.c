@@ -34,6 +34,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <smcp/smcp.h>
+#include <smcp/smcp-node-router.h>
 #include <smcp/smcp-variable_node.h>
 #include <time.h>
 #include <errno.h>
@@ -103,13 +104,10 @@ static smcp_status_t device_func(
 			return SMCP_STATUS_FAILURE;
 		}
 	} else if(action==SMCP_VAR_GET_OBSERVABLE) {
-		static const bool observable[] = {
-			[SYS_NODE_PATH_LOADAVG_1] = 0,
-			[SYS_NODE_PATH_LOADAVG_5] = 0,
-			[SYS_NODE_PATH_LOADAVG_15] = 0,
-			[SYS_NODE_PATH_UPTIME] = 0,
+		static const bool observable[SYS_NODE_PATH_COUNT] = {
+			//[SYS_NODE_PATH_UPTIME] = 1,
 		};
-		if(!observable)
+		if(!observable[path])
 			return SMCP_STATUS_NOT_ALLOWED;
 	} else if(action==SMCP_VAR_GET_VALUE) {
 		switch(path) {
@@ -165,40 +163,57 @@ bail:
 }
 
 static void
-system_node_dealloc(smcp_variable_node_t x) {
+system_node_dealloc(smcp_node_t x) {
+	if(x->context)
+		x->context;
 	free(x);
 }
 
-smcp_variable_node_t
+smcp_node_t
 system_node_alloc() {
-	smcp_variable_node_t ret =
-	    (smcp_variable_node_t)calloc(sizeof(struct smcp_variable_node_s), 1);
+	smcp_node_t ret = (smcp_node_t)calloc(sizeof(struct smcp_node_s), 1);
+	ret->context = calloc(sizeof(struct smcp_variable_node_s), 1);
 
-	ret->node.finalize = (void (*)(smcp_node_t)) &system_node_dealloc;
+	ret->finalize = (void (*)(smcp_node_t)) &system_node_dealloc;
 	return ret;
 }
 
 
-smcp_variable_node_t
+smcp_node_t
 smcp_system_node_init(
-	smcp_variable_node_t self,
+	smcp_node_t self,
 	smcp_node_t parent,
 	const char* name
 ) {
 	require(self || (self = system_node_alloc()), bail);
 
-	require(smcp_variable_node_init(
+	require(smcp_node_init(
 		self,
 		(void*)parent,
 		name
 	), bail);
+	self->request_handler = (void*)&smcp_variable_node_request_handler;
 
-	self->func = device_func;
+	((smcp_variable_node_t)self->context)->func = device_func;
 
 bail:
 	return self;
 }
 
+extern smcp_node_t
+SMCPD_module__system_node_init(
+	smcp_node_t self,
+	smcp_node_t parent,
+	const char* name
+);
 
+smcp_node_t
+SMCPD_module__system_node_init(
+	smcp_node_t self,
+	smcp_node_t parent,
+	const char* name
+) {
+	return smcp_system_node_init(self, parent, name);
+}
 
 
